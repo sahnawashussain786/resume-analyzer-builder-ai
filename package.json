@@ -1,0 +1,15 @@
+{
+  "name": "resumeforge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Resume Builder & ATS Analyzer — MERN stack (MongoDB, Express, React, Node) with TailwindCSS + lucide-react",
+  "scripts": {
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "build": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
