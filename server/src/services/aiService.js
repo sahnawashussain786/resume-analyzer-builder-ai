@@ -1,10 +1,13 @@
 import OpenAI from "openai";
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-const MOCK = process.env.AI_MOCK === "true" || !process.env.OPENAI_API_KEY;
+// Live whenever a real API key is present — a pasted key can never be silently ignored.
+// (AI_MOCK is only meaningful as "no key yet"; the key always takes priority.)
+const HAS_KEY = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim());
+const MOCK = !HAS_KEY;
 
-const client = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const client = HAS_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() })
   : null;
 
 const clip = (t, n) => (t || "").toString().slice(0, n);
@@ -33,8 +36,9 @@ function parseJson(raw) {
 export function aiStatus() {
   return {
     mock: MOCK,
+    hasKey: HAS_KEY,
     model: MOCK ? "mock" : MODEL,
-    connected: !!client && !MOCK,
+    connected: HAS_KEY && !MOCK,
   };
 }
 

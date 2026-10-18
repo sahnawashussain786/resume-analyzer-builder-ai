@@ -140,6 +140,57 @@ export const ACCENT_COLORS = [
   { name: "Slate", value: "#334155" },
 ];
 
+/**
+ * Coerces untrusted/partial resume data (e.g. stored docs, AI output) into a
+ * shape the preview templates can render without crashing.
+ */
+export function normalizeResume(input) {
+  const src = input || {};
+  const str = (v) => (typeof v === "string" ? v : "");
+  const strObj = (v) => {
+    if (!v || typeof v !== "object") return { name: "", level: "Intermediate" };
+    return { ...v, name: str(v.name), level: v.level == null ? "" : str(v.level) };
+  };
+  const cleanArr = (arr, fn) =>
+    (Array.isArray(arr) ? arr : []).filter((x) => x && typeof x === "object" && (fn ? fn(x) : true)).map(fn || ((x) => x));
+
+  return {
+    ...src,
+    basics: {
+      name: str(src.basics?.name),
+      jobTitle: str(src.basics?.jobTitle),
+      email: str(src.basics?.email),
+      phone: str(src.basics?.phone),
+      location: str(src.basics?.location),
+      website: str(src.basics?.website),
+      linkedin: str(src.basics?.linkedin),
+      github: str(src.basics?.github),
+    },
+    summary: str(src.summary),
+    experience: cleanArr(src.experience, (e) => ({
+      title: str(e.title),
+      company: str(e.company),
+      location: str(e.location),
+      startDate: str(e.startDate),
+      endDate: str(e.endDate),
+      current: !!e.current,
+      bullets: Array.isArray(e.bullets) ? e.bullets.filter((b) => typeof b === "string" && b.trim()) : [],
+    })).filter((e) => e.title || e.company || e.bullets.length),
+    education: cleanArr(src.education, (e) => ({
+      school: str(e.school), degree: str(e.degree), field: str(e.field),
+      grade: str(e.grade), startDate: str(e.startDate), endDate: str(e.endDate), description: str(e.description),
+    })).filter((e) => e.school || e.degree),
+    skills: (Array.isArray(src.skills) ? src.skills : [])
+      .map((s) => (typeof s === "string" ? { name: s } : s && typeof s === "object" ? strObj(s) : null))
+      .filter((s) => s && s.name),
+    projects: cleanArr(src.projects, (p) => ({
+      name: str(p.name), link: str(p.link), tech: str(p.tech), description: str(p.description),
+    })).filter((p) => p.name || p.description),
+    certifications: cleanArr(src.certifications, (c) => ({ name: str(c.name), issuer: str(c.issuer), date: str(c.date) })).filter((c) => c.name),
+    languages: cleanArr(src.languages, (l) => ({ name: str(l.name), level: str(l.level) })).filter((l) => l.name),
+  };
+}
+
 export function resumeToPlainText(data) {
   const d = data || emptyResume();
   const lines = [];

@@ -17,6 +17,11 @@ import {
   Trash2,
   ChevronLeft,
   Briefcase,
+  GraduationCap,
+  ListChecks,
+  FolderGit2,
+  BadgeCheck,
+  Languages,
 } from "lucide-react";
 import { api, errMsg } from "../api/client.js";
 import Navbar from "../components/Navbar.jsx";

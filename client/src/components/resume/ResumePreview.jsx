@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { monthYear } from '../../utils/resume.js';
+import { monthYear, normalizeResume } from '../../utils/resume.js';
 
 /**
  * Scales a fixed A4-width (794px) document to fit its container.
@@ -66,6 +66,7 @@ function Bullets({ bullets, dotColor, serif }) {
 }
 
 function DateRange({ item }) {
+  if (!item || typeof item !== 'object') return '';
   const s = monthYear(item.startDate);
   const e = item.current ? 'Present' : monthYear(item.endDate);
   return s || e ? `${s}${s && e ? ' — ' : ''}${e}` : '';
@@ -430,6 +431,7 @@ const TEMPLATE_COMPONENTS = { modern: Modern, classic: Classic, minimal: Minimal
 
 export default function ResumePreview({ data, template = 'modern', accent = '#6366f1' }) {
   const Template = TEMPLATE_COMPONENTS[template] || Modern;
+  const d = normalizeResume(data);
   return (
     <div
       id="resume-document"
