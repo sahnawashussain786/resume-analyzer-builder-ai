@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Eye, EyeOff, UserPlus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Button, Input, Field } from "../components/ui.jsx";
@@ -11,6 +12,19 @@ const strengths = [
   "One uppercase letter",
   "One number",
 ];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
 
 export default function Register() {
   const { register, dark, setDark } = useAuth();
@@ -67,15 +81,29 @@ export default function Register() {
           <div className="pointer-events-none absolute -left-20 top-1/3 h-96 w-96 rounded-full bg-white/10 blur-3xl animate-blob" />
           <Logo />
           <div>
-            <h2 className="font-display text-4xl font-extrabold leading-tight text-white">
+            <motion.h2
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              className="font-display text-4xl font-extrabold leading-tight text-white"
+            >
               Create your account.
               <br />
               Forge your future.
-            </h2>
-            <p className="mt-5 max-w-md text-white/80">
+            </motion.h2>
+            <motion.p
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.4,
+                delay: 0.12,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="mt-5 max-w-md text-white/80"
+            >
               Free forever for the essentials: unlimited building, all
               templates, AI analyses, PDF export.
-            </p>
+            </motion.p>
             <div className="mt-8 grid grid-cols-3 gap-4 text-center text-white">
               {[
                 ["90+", "ATS checks"],
@@ -99,7 +127,12 @@ export default function Register() {
 
         {/* Form */}
         <div className="flex items-center justify-center p-6 sm:p-12">
-          <div className="w-full max-w-md">
+          <motion.div
+            className="w-full max-w-md"
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+          >
             <div className="mb-8 flex items-center justify-between lg:hidden">
               <Logo />
               <button
@@ -109,10 +142,16 @@ export default function Register() {
                 {dark ? "☀" : "☾"}
               </button>
             </div>
-            <h1 className="font-display text-2xl font-extrabold text-slate-900 dark:text-white sm:text-3xl">
+            <motion.h1
+              variants={fadeUp}
+              className="font-display text-2xl font-extrabold text-slate-900 dark:text-white sm:text-3xl"
+            >
               Create your free account
-            </h1>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            </motion.h1>
+            <motion.p
+              variants={fadeUp}
+              className="mt-2 text-sm text-slate-500 dark:text-slate-400"
+            >
               Already have one?{" "}
               <Link
                 to="/login"
@@ -120,9 +159,13 @@ export default function Register() {
               >
                 Log in
               </Link>
-            </p>
+            </motion.p>
 
-            <form onSubmit={submit} className="mt-8 space-y-4">
+            <motion.form
+              variants={fadeUp}
+              onSubmit={submit}
+              className="mt-8 space-y-4"
+            >
               <Field label="Full name">
                 <Input
                   required
@@ -200,8 +243,8 @@ export default function Register() {
               >
                 <UserPlus size={17} /> Create account
               </Button>
-            </form>
-          </div>
+            </motion.form>
+          </motion.div>
         </div>
       </div>
     </div>

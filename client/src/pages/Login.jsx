@@ -1,10 +1,20 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Eye, EyeOff, LogIn, ScanLine, Wand2, Mail } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Button, Input, Field } from "../components/ui.jsx";
 import { errMsg } from "../api/client.js";
 import Logo from "../components/Logo.jsx";
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+};
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
 
 export default function Login() {
   const { login, dark, setDark } = useAuth();
@@ -41,15 +51,25 @@ export default function Login() {
           />
           <Logo />
           <div>
-            <h2 className="font-display text-4xl font-extrabold leading-tight text-white">
+            <motion.h2
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              className="font-display text-4xl font-extrabold leading-tight text-white"
+            >
               Welcome back.
               <br />
               Your next job is waiting.
-            </h2>
-            <p className="mt-5 max-w-md text-brand-100/90">
+            </motion.h2>
+            <motion.p
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-5 max-w-md text-brand-100/90"
+            >
               Log in to your AI-built resumes, ATS analyses, tailored versions
               and cover letters.
-            </p>
+            </motion.p>
             <div className="mt-8 space-y-3 text-sm text-white/90">
               {[
                 { icon: Wand2, t: "AI-written summaries & bullet points" },
@@ -76,7 +96,12 @@ export default function Login() {
 
         {/* Form */}
         <div className="flex items-center justify-center p-6 sm:p-12">
-          <div className="w-full max-w-md">
+          <motion.div
+            className="w-full max-w-md"
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+          >
             <div className="mb-8 flex items-center justify-between lg:hidden">
               <Logo />
               <button
@@ -86,10 +111,16 @@ export default function Login() {
                 {dark ? "☀" : "☾"}
               </button>
             </div>
-            <h1 className="font-display text-2xl font-extrabold text-slate-900 dark:text-white sm:text-3xl">
+            <motion.h1
+              variants={fadeUp}
+              className="font-display text-2xl font-extrabold text-slate-900 dark:text-white sm:text-3xl"
+            >
               Log in to ResumeForge
-            </h1>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            </motion.h1>
+            <motion.p
+              variants={fadeUp}
+              className="mt-2 text-sm text-slate-500 dark:text-slate-400"
+            >
               New here?{" "}
               <Link
                 to="/register"
@@ -97,9 +128,13 @@ export default function Login() {
               >
                 Create a free account
               </Link>
-            </p>
+            </motion.p>
 
-            <form onSubmit={submit} className="mt-8 space-y-4">
+            <motion.form
+              variants={fadeUp}
+              onSubmit={submit}
+              className="mt-8 space-y-4"
+            >
               <Field label="Email">
                 <Input
                   type="email"
@@ -144,12 +179,15 @@ export default function Login() {
               >
                 <LogIn size={17} /> Log in
               </Button>
-            </form>
-            <p className="mt-6 text-center text-xs text-slate-400">
+            </motion.form>
+            <motion.p
+              variants={fadeUp}
+              className="mt-6 text-center text-xs text-slate-400"
+            >
               By continuing you agree to our fair, human-first use of AI in your
               job search.
-            </p>
-          </div>
+            </motion.p>
+          </motion.div>
         </div>
       </div>
     </div>
