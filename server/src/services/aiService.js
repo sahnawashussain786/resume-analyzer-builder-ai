@@ -49,17 +49,34 @@ async function chatJson(
   temperature = 0.4,
 ) {
   if (MOCK) throw new Error("__MOCK__");
-  const completion = await client.chat.completions.create({
-    model: MODEL,
-    response_format: { type: "json_object" },
-    temperature,
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  });
-  return parseJson(completion.choices[0]?.message?.content);
+  try {
+    const completion = await client.chat.completions.create({
+      model: MODEL,
+      response_format: { type: "json_object" },
+      temperature,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
+    return parseJson(completion.choices[0]?.message?.content);
+  } catch (err) {
+    // Surface OpenAI API errors with clear, actionable messages
+    if (err.status === 429 || (err.code && /credit/i.test(err.code))) {
+      const creditErr = new Error(
+        'OpenAI credit balance exhausted. Add credits at https://platform.openai.com/settings/organization/billing/ or set AI_MOCK=true to use demo mode.'
+      );
+      creditErr.statusCode = 402;
+      throw creditErr;
+    }
+    if (err.status === 401 || (err.code && /unauth/i.test(err.code))) {
+      const authErr = new Error('Invalid OpenAI API key. Check OPENAI_API_KEY in your .env file.');
+      authErr.statusCode = 500;
+      throw authErr;
+    }
+    throw err;
+  }
 }
 
 /* ------------------------------------------------------------------ */
