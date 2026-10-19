@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { useAuth } from "./context/AuthContext.jsx";
@@ -22,20 +23,44 @@ function Protected({ children }) {
   return children;
 }
 
+// /login and /register slide like pages on a horizontal wheel:
+// login -> register pushes content left (new page enters from the right),
+// register -> login slides it back to the right (new page enters from left).
+const AUTH_PAGE_ORDER = { "/login": 0, "/register": 1 };
+
+const slideVariants = {
+  enter: (dir) => ({ x: dir > 0 ? "100%" : "-100%" }),
+  center: { x: "0%" },
+  exit: (dir) => ({ x: dir > 0 ? "-100%" : "100%" }),
+};
+
 function AppRoutes() {
   const location = useLocation();
-  // Only /login <-> /register get the swipe transition; everything else
-  // keeps the previous instant behavior (shared key, no exit animation).
-  const isAuthSwitch =
+  const isAuthPage =
     location.pathname === "/login" || location.pathname === "/register";
+
+  // Capture the navigation direction at the moment the route changes.
+  // Going to /register slides everything left (+1); to /login, right (-1).
+  const prevPathRef = useRef(null);
+  const directionRef = useRef(1);
+  if (prevPathRef.current !== location.pathname) {
+    directionRef.current = AUTH_PAGE_ORDER[location.pathname] === 1 ? 1 : -1;
+    prevPathRef.current = location.pathname;
+  }
+  const direction = directionRef.current;
+
   return (
-    <AnimatePresence mode="wait" initial={false}>
+    <AnimatePresence mode="popLayout" initial={false} custom={direction}>
       <motion.div
-        key={isAuthSwitch ? location.pathname : "main"}
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -14 }}
-        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        key={isAuthPage ? location.pathname : "main"}
+        custom={direction}
+        variants={slideVariants}
+        initial="enter"
+        animate="center"
+        exit="exit"
+        transition={{
+          x: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+        }}
       >
         <Routes location={location}>
           <Route path="/" element={<Landing />} />
