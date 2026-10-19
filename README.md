@@ -31,15 +31,15 @@ The app runs out of the box: with no keys configured it uses an **in-memory Mong
 
 ### Enable real AI + persistent DB
 
-Edit `server/.env`:
+The best free option is **Google Gemini** (free-tier API key from [Google AI Studio](https://aistudio.google.com/app/apikey)). Edit `server/.env`:
 
 ```ini
-OPENAI_API_KEY=sk-...          # live AI
-AI_MOCK=false
+GEMINI_API_KEY=AIza...         # free-tier key — auto-detected first, no config needed
+GEMINI_MODEL=gemini-3.8-flash
 MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/resumeforge?retryWrites=true&w=majority
 ```
 
-Then restart the API. Model is configurable via `OPENAI_MODEL` (default `gpt-4o-mini`).
+Then restart the API. Alternative providers: `GROQ_API_KEY` (free Groq tier) or `OPENAI_API_KEY`, forceable via `AI_PROVIDER=gemini|groq|openai`. Model is configurable via the matching `*_MODEL` variable.
 
 ## 🗂 Structure
 

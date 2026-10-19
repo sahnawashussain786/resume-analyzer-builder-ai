@@ -2,15 +2,26 @@ import OpenAI from "openai";
 
 // ---- Provider selection ------------------------------------------------
 // Priority: an explicit provider override -> first usable live key -> mock.
-// This keeps OpenAI as a fallback while letting you switch to a free provider
-// whose credits do not run out in the same way OpenAI's usage-based balance does.
+// Auto-detect order: Gemini (free tier) -> Groq -> OpenAI.
 const RAW_PROVIDER = process.env.AI_PROVIDER;
 const AI_PROVIDER = RAW_PROVIDER == null ? "" : String(RAW_PROVIDER).trim().toLowerCase();
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY == null ? "" : String(process.env.OPENAI_API_KEY).trim();
 const GROQ_KEY = process.env.GROQ_API_KEY == null ? "" : String(process.env.GROQ_API_KEY).trim();
+const GEMINI_KEY = process.env.GEMINI_API_KEY == null ? "" : String(process.env.GEMINI_API_KEY).trim();
 // AI_MOCK=true forces demo/mock mode even when a live key is configured.
 const AI_FORCE_MOCK = /^(true|1|yes)$/i.test(String(process.env.AI_MOCK ?? "").trim());
+
+// Gemini is called through Google's OpenAI-compatible endpoint, so the same
+// OpenAI npm package works with no extra dependency.
+const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
+const GEMINI_DEFAULT_MODEL = "gemini-3.8-flash";
+const GEMINI_FALLBACK_MODELS = [
+  "gemini-3.8-flash",
+  "gemini-3-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash",
+];
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 // llama-3.3-70b-versatile was decommissioned by Groq on Aug 16, 2026.
@@ -37,7 +48,16 @@ function makeOpenAiClient(apiKey, baseURL) {
   return new OpenAI(options);
 }
 
-if (AI_PROVIDER === "groq") {
+const resolveGeminiModel = () =>
+  process.env.GEMINI_MODEL == null ? GEMINI_DEFAULT_MODEL : String(process.env.GEMINI_MODEL).trim() || GEMINI_DEFAULT_MODEL;
+
+if (AI_PROVIDER === "gemini") {
+  provider = "gemini";
+  model = resolveGeminiModel();
+  if (hasKey(GEMINI_KEY)) {
+    client = makeOpenAiClient(GEMINI_KEY, GEMINI_BASE_URL);
+  }
+} else if (AI_PROVIDER === "groq") {
   provider = "groq";
   model = process.env.GROQ_MODEL == null ? GROQ_DEFAULT_MODEL : String(process.env.GROQ_MODEL).trim() || GROQ_DEFAULT_MODEL;
   if (hasKey(GROQ_KEY)) {
@@ -50,8 +70,12 @@ if (AI_PROVIDER === "groq") {
     client = makeOpenAiClient(OPENAI_KEY, undefined);
   }
 } else {
-  // No explicit provider: use the first live key we recognize.
-  if (hasKey(GROQ_KEY)) {
+  // No explicit provider: use the first live key we recognize (Gemini first).
+  if (hasKey(GEMINI_KEY)) {
+    provider = "gemini";
+    model = resolveGeminiModel();
+    client = makeOpenAiClient(GEMINI_KEY, GEMINI_BASE_URL);
+  } else if (hasKey(GROQ_KEY)) {
     provider = "groq";
     model = process.env.GROQ_MODEL == null ? GROQ_DEFAULT_MODEL : String(process.env.GROQ_MODEL).trim() || GROQ_DEFAULT_MODEL;
     client = makeOpenAiClient(GROQ_KEY, GROQ_BASE_URL);
@@ -104,9 +128,13 @@ async function chatJson(
   temperature = 0.4,
 ) {
   if (MOCK) throw new Error("__MOCK__");
+  // Gemini thinking models count reasoning tokens toward max_tokens, so give
+  // them a generous budget and cap thinking effort to keep responses fast.
+  const isGemini = provider === "gemini";
   const payload = {
     temperature,
-    max_tokens: maxTokens,
+    max_tokens: isGemini ? Math.max(maxTokens * 2, 1600) : maxTokens,
+    ...(isGemini ? { reasoning_effort: "low" } : {}),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -116,7 +144,11 @@ async function chatJson(
   // Try the configured model, then known-good fallbacks, so a decommissioned
   // or renamed provider model degrades gracefully instead of breaking every
   // AI feature (Groq retired llama-3.3-70b-versatile in Aug 2026).
-  const candidates = [model, ...GROQ_FALLBACK_MODELS.filter((m) => m !== model)];
+  const FALLBACK_MODELS = {
+    gemini: GEMINI_FALLBACK_MODELS,
+    groq: GROQ_FALLBACK_MODELS,
+  };
+  const candidates = [model, ...((FALLBACK_MODELS[provider] || []).filter((m) => m !== model))];
   let lastModelErr = null;
   for (let i = 0; i < candidates.length; i++) {
     // Attempt 1: provider JSON mode. Attempt 2: freeform + local JSON parsing.
@@ -124,12 +156,7 @@ async function chatJson(
       try {
         const req = {
           model: candidates[i],
-          temperature,
-          max_tokens: maxTokens,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
+          ...payload,
         };
         if (useJsonMode) req.response_format = { type: "json_object" };
         const completion = await client.chat.completions.create(req);
@@ -163,6 +190,33 @@ function isModelMissingError(err) {
 
 /** Surface provider-specific API errors with clear, actionable messages. */
 function mapChatError(err) {
+    if (provider === "gemini") {
+      const raw = String(err?.message || "");
+      if (
+        /api[_ ]key[_ ]not[_ ]valid|api_key_invalid|please pass a valid api key|invalid api key|400 status code \(no body\)/i.test(raw) ||
+        err.status === 401 ||
+        err.status === 403
+      ) {
+        const authErr = new Error(
+          'Invalid Gemini API key. Check GEMINI_API_KEY in your server/.env file (get one free at https://aistudio.google.com/app/apikey).'
+        );
+        authErr.statusCode = 500;
+        throw authErr;
+      }
+      if (err.status === 429) {
+        const limitErr = new Error(
+          'Gemini free-tier rate limit reached — it resets after the daily window. Remove the GEMINI_API_KEY comment or set GROQ_API_KEY so the app can fall back to Groq, or set AI_MOCK=true for demo mode.'
+        );
+        limitErr.statusCode = 429;
+        throw limitErr;
+      }
+      if (err.status === 503 || /overloaded|unavailable/i.test(raw)) {
+        const sErr = new Error('Gemini is temporarily overloaded. Please retry in a moment.');
+        sErr.statusCode = 503;
+        throw sErr;
+      }
+    }
+
     if (provider === "groq") {
       if (err.status === 401 || (err.code && /unauth/i.test(err.code))) {
         const authErr = new Error(

@@ -41,7 +41,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 ResumeForge API running on http://localhost:${PORT}`);
   console.log(
-    `🤖 AI mode: ${aiStatus().mock ? 'MOCK (no live AI key configured — set AI_MOCK=false and add OPENAI_API_KEY or GROQ_API_KEY for live AI)' : 'LIVE'}`,
+    `🤖 AI mode: ${aiStatus().mock ? 'MOCK (no live AI key configured — add GEMINI_API_KEY in server/.env for the free tier, or GROQ_API_KEY / OPENAI_API_KEY)' : 'LIVE'}`,
   );
 
 });
