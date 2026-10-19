@@ -193,9 +193,10 @@ export default function Settings() {
                 </span>
                 {ai.mock && (
                   <p className="w-full text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    Running with built-in mock AI (no OPENAI_API_KEY in
+                    Running with built-in mock AI (no live AI key in
                     server/.env). The full experience works, but outputs are
-                    simulated. Add your OpenAI key and set{" "}
+                    simulated. Add a live key (for example GROQ_API_KEY or
+                    OPENAI_API_KEY) and set{" "}
                     <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
                       AI_MOCK=false
                     </code>{" "}

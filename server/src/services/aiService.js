@@ -1,14 +1,58 @@
 import OpenAI from "openai";
 
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-// Live whenever a real API key is present — a pasted key can never be silently ignored.
-// (AI_MOCK is only meaningful as "no key yet"; the key always takes priority.)
-const HAS_KEY = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim());
-const MOCK = !HAS_KEY;
+// ---- Provider selection ------------------------------------------------
+// Priority: an explicit provider override -> first usable live key -> mock.
+// This keeps OpenAI as a fallback while letting you switch to a free provider
+// whose credits do not run out in the same way OpenAI's usage-based balance does.
+const RAW_PROVIDER = process.env.AI_PROVIDER;
+const AI_PROVIDER = RAW_PROVIDER == null ? "" : String(RAW_PROVIDER).trim().toLowerCase();
 
-const client = HAS_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() })
-  : null;
+const OPENAI_KEY = process.env.OPENAI_API_KEY == null ? "" : String(process.env.OPENAI_API_KEY).trim();
+const GROQ_KEY = process.env.GROQ_API_KEY == null ? "" : String(process.env.GROQ_API_KEY).trim();
+
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+const GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile";
+
+function hasKey(value) {
+  return value != null && String(value).trim().length > 0;
+}
+
+let provider = "openai";
+let client = null;
+let model = process.env.OPENAI_MODEL == null ? "gpt-4o-mini" : String(process.env.OPENAI_MODEL).trim() || "gpt-4o-mini";
+
+function makeOpenAiClient(apiKey, baseURL) {
+  const options = { apiKey: String(apiKey).trim() };
+  if (baseURL) options.baseURL = baseURL;
+  return new OpenAI(options);
+}
+
+if (AI_PROVIDER === "groq") {
+  provider = "groq";
+  model = process.env.GROQ_MODEL == null ? GROQ_DEFAULT_MODEL : String(process.env.GROQ_MODEL).trim() || GROQ_DEFAULT_MODEL;
+  if (hasKey(GROQ_KEY)) {
+    client = makeOpenAiClient(GROQ_KEY, GROQ_BASE_URL);
+  }
+} else if (AI_PROVIDER === "openai") {
+  provider = "openai";
+  model = process.env.OPENAI_MODEL == null ? "gpt-4o-mini" : String(process.env.OPENAI_MODEL).trim() || "gpt-4o-mini";
+  if (hasKey(OPENAI_KEY)) {
+    client = makeOpenAiClient(OPENAI_KEY, undefined);
+  }
+} else {
+  // No explicit provider: use the first live key we recognize.
+  if (hasKey(GROQ_KEY)) {
+    provider = "groq";
+    model = process.env.GROQ_MODEL == null ? GROQ_DEFAULT_MODEL : String(process.env.GROQ_MODEL).trim() || GROQ_DEFAULT_MODEL;
+    client = makeOpenAiClient(GROQ_KEY, GROQ_BASE_URL);
+  } else if (hasKey(OPENAI_KEY)) {
+    provider = "openai";
+    model = process.env.OPENAI_MODEL == null ? "gpt-4o-mini" : String(process.env.OPENAI_MODEL).trim() || "gpt-4o-mini";
+    client = makeOpenAiClient(OPENAI_KEY, undefined);
+  }
+}
+
+const MOCK = !client;
 
 const clip = (t, n) => (t || "").toString().slice(0, n);
 
@@ -36,9 +80,10 @@ function parseJson(raw) {
 export function aiStatus() {
   return {
     mock: MOCK,
-    hasKey: HAS_KEY,
-    model: MOCK ? "mock" : MODEL,
-    connected: HAS_KEY && !MOCK,
+    provider,
+    hasKey: Boolean(client),
+    model: MOCK ? "mock" : model,
+    connected: !MOCK,
   };
 }
 
@@ -51,7 +96,7 @@ async function chatJson(
   if (MOCK) throw new Error("__MOCK__");
   try {
     const completion = await client.chat.completions.create({
-      model: MODEL,
+      model,
       response_format: { type: "json_object" },
       temperature,
       max_tokens: maxTokens,
@@ -62,19 +107,39 @@ async function chatJson(
     });
     return parseJson(completion.choices[0]?.message?.content);
   } catch (err) {
-    // Surface OpenAI API errors with clear, actionable messages
-    if (err.status === 429 || (err.code && /credit/i.test(err.code))) {
-      const creditErr = new Error(
-        'OpenAI credit balance exhausted. Add credits at https://platform.openai.com/settings/organization/billing/ or set AI_MOCK=true to use demo mode.'
-      );
-      creditErr.statusCode = 402;
-      throw creditErr;
+    // Surface provider-specific API errors with clear, actionable messages.
+    if (provider === "groq") {
+      if (err.status === 401 || (err.code && /unauth/i.test(err.code))) {
+        const authErr = new Error(
+          'Invalid Groq API key. Check GROQ_API_KEY in your server/.env file.'
+        );
+        authErr.statusCode = 500;
+        throw authErr;
+      }
+      if (err.status === 429) {
+        const limitErr = new Error(
+          'Groq free-tier rate limit reached. If you need higher limits, rotate to a different AI_PROVIDER or set AI_MOCK=true for demo mode.'
+        );
+        limitErr.statusCode = 429;
+        throw limitErr;
+      }
     }
-    if (err.status === 401 || (err.code && /unauth/i.test(err.code))) {
-      const authErr = new Error('Invalid OpenAI API key. Check OPENAI_API_KEY in your .env file.');
-      authErr.statusCode = 500;
-      throw authErr;
+
+    if (provider === "openai") {
+      if (err.status === 429 || (err.code && /credit/i.test(err.code))) {
+        const creditErr = new Error(
+          'OpenAI credit balance exhausted. Add credits at https://platform.openai.com/settings/organization/billing/ or switch AI_PROVIDER=groq with a GROQ_API_KEY, or set AI_MOCK=true to use demo mode.'
+        );
+        creditErr.statusCode = 402;
+        throw creditErr;
+      }
+      if (err.status === 401 || (err.code && /unauth/i.test(err.code))) {
+        const authErr = new Error('Invalid OpenAI API key. Check OPENAI_API_KEY in your .env file.');
+        authErr.statusCode = 500;
+        throw authErr;
+      }
     }
+
     throw err;
   }
 }
@@ -352,14 +417,14 @@ ${clip(JSON.stringify(resume), 9000)}`,
     if (err.message === "__MOCK__")
       return {
         summary:
-          "Tailored professional summary emphasizing the requirements from the job description (mock mode — connect OPENAI_API_KEY for real AI tailoring).",
+          "Tailored professional summary emphasizing the requirements from the job description (mock mode — connect an AI provider key for real AI tailoring).",
         experience: (resume?.experience || []).map((e) => ({
           ...e,
           bullets: e.bullets,
         })),
         matchedKeywords: ["stakeholders", "delivery", "quality"],
         notes:
-          "Mock mode active. Add your OPENAI_API_KEY to backend/.env (or set AI_MOCK=false and OPENAI_API_KEY=sk-...) to enable real tailoring.",
+          "Mock mode active. Add a live AI key (for example GROQ_API_KEY or OPENAI_API_KEY) to server/.env and keep AI_MOCK=false to enable real tailoring.",
       };
     throw err;
   }
@@ -401,7 +466,7 @@ ${resume ? clip(JSON.stringify(resume), 8000) : clip(resumeText, 8000)}`,
           `I'm excited to apply for the ${jobTitle || "open role"}${company ? ` at ${company}` : ""}. ` +
           `My experience aligns closely with what your team is looking for: significant hands-on work in the core areas of the role, a record of measurable results, and the collaboration style that modern teams thrive on.\n\n` +
           `In my recent work, I owned projects end to end — from understanding requirements to delivery and iteration — consistently improving quality and speed. I'd bring the same ownership and attention to detail to this position.\n\n` +
-          `(Mock mode: add your OPENAI_API_KEY to generate a fully personalized, AI-written letter.)\n\n` +
+          `(Mock mode: add a live AI provider key to generate a fully personalized, AI-written letter.)\n\n` +
           `Sincerely,\nA Candidate`,
       };
     throw err;

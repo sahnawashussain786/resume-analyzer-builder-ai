@@ -21,9 +21,12 @@ app.use(
   })
 );
 
-app.get('/api/health', (req, res) =>
-  res.json({ status: 'ok', ai: process.env.AI_MOCK === 'true' || !process.env.OPENAI_API_KEY ? 'mock' : 'live' })
-);
+import { aiStatus } from './services/aiService.js';
+
+app.get('/api/health', (req, res) => {
+  const ai = aiStatus();
+  res.json({ status: 'ok', ai: ai.mock ? 'mock' : 'live' });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/resumes', resumeRoutes);
@@ -38,6 +41,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 ResumeForge API running on http://localhost:${PORT}`);
   console.log(
-    `🤖 AI mode: ${process.env.AI_MOCK === 'true' || !process.env.OPENAI_API_KEY ? 'MOCK (no OPENAI_API_KEY set — set AI_MOCK=false and paste a key for live AI)' : 'LIVE'}`
+    `🤖 AI mode: ${aiStatus().mock ? 'MOCK (no live AI key configured — set AI_MOCK=false and add OPENAI_API_KEY or GROQ_API_KEY for live AI)' : 'LIVE'}`,
   );
+
 });
