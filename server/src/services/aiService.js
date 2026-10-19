@@ -9,9 +9,19 @@ const AI_PROVIDER = RAW_PROVIDER == null ? "" : String(RAW_PROVIDER).trim().toLo
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY == null ? "" : String(process.env.OPENAI_API_KEY).trim();
 const GROQ_KEY = process.env.GROQ_API_KEY == null ? "" : String(process.env.GROQ_API_KEY).trim();
+// AI_MOCK=true forces demo/mock mode even when a live key is configured.
+const AI_FORCE_MOCK = /^(true|1|yes)$/i.test(String(process.env.AI_MOCK ?? "").trim());
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
-const GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile";
+// llama-3.3-70b-versatile was decommissioned by Groq on Aug 16, 2026.
+// These are the current recommended chat models (tried in order).
+const GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b";
+const GROQ_FALLBACK_MODELS = [
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b",
+  "llama-3.1-8b-instant",
+];
 
 function hasKey(value) {
   return value != null && String(value).trim().length > 0;
@@ -52,7 +62,7 @@ if (AI_PROVIDER === "groq") {
   }
 }
 
-const MOCK = !client;
+const MOCK = !client || AI_FORCE_MOCK;
 
 const clip = (t, n) => (t || "").toString().slice(0, n);
 
@@ -94,20 +104,65 @@ async function chatJson(
   temperature = 0.4,
 ) {
   if (MOCK) throw new Error("__MOCK__");
-  try {
-    const completion = await client.chat.completions.create({
-      model,
-      response_format: { type: "json_object" },
-      temperature,
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-    return parseJson(completion.choices[0]?.message?.content);
-  } catch (err) {
-    // Surface provider-specific API errors with clear, actionable messages.
+  const payload = {
+    temperature,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  };
+
+  // Try the configured model, then known-good fallbacks, so a decommissioned
+  // or renamed provider model degrades gracefully instead of breaking every
+  // AI feature (Groq retired llama-3.3-70b-versatile in Aug 2026).
+  const candidates = [model, ...GROQ_FALLBACK_MODELS.filter((m) => m !== model)];
+  let lastModelErr = null;
+  for (let i = 0; i < candidates.length; i++) {
+    // Attempt 1: provider JSON mode. Attempt 2: freeform + local JSON parsing.
+    for (const useJsonMode of [true, false]) {
+      try {
+        const req = {
+          model: candidates[i],
+          temperature,
+          max_tokens: maxTokens,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        };
+        if (useJsonMode) req.response_format = { type: "json_object" };
+        const completion = await client.chat.completions.create(req);
+        if (candidates[i] !== model) model = candidates[i]; // remember the working model
+        return parseJson(completion.choices[0]?.message?.content);
+      } catch (err) {
+        if (useJsonMode && /failed_generation|json/i.test(String(err?.message || ""))) continue; // retry without JSON mode
+        if (isModelMissingError(err) && i < candidates.length - 1) {
+          lastModelErr = err;
+          break; // move to the next candidate model
+        }
+        throw mapChatError(err);
+      }
+    }
+  }
+  throw mapChatError(lastModelErr);
+}
+
+/** True when a provider says the chosen model is missing, retired or blocked. */
+function isModelMissingError(err) {
+  const code = String(err?.code || "").toLowerCase();
+  const msg = String(err?.message || "").toLowerCase();
+  return (
+    err?.status === 404 ||
+    err?.status === 400 &&
+      (code.includes("model") || msg.includes("does not exist")) ||
+    code.includes("model_not_found") ||
+    (msg.includes("model") && msg.includes("no longer"))
+  );
+}
+
+/** Surface provider-specific API errors with clear, actionable messages. */
+function mapChatError(err) {
     if (provider === "groq") {
       if (err.status === 401 || (err.code && /unauth/i.test(err.code))) {
         const authErr = new Error(
@@ -141,7 +196,6 @@ async function chatJson(
     }
 
     throw err;
-  }
 }
 
 /* ------------------------------------------------------------------ */
